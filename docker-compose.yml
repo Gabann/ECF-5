@@ -1,0 +1,121 @@
+version: "3.8"
+
+services:
+  db:
+    image: mysql
+    container_name: ecf-5-db
+    restart: always
+    ports:
+      - "3309:${DB_PORT}"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    volumes:
+      - ecf_5_volume:/var/lib/mysql
+
+  redis:
+    image: redis
+    container_name: ecf-5-redis
+    command:
+      - /bin/sh
+      - -c
+      - redis-server --requirepass "$${REDIS_PASSWORD:?REDIS_PASSWORD variable is not set}"
+    ports:
+      - "6379:6379"
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    volumes:
+      - ./redis.conf:/usr/local/etc/redis/redis.conf
+
+  react:
+    container_name: ecf-5-react
+    build: ./client/.
+    ports:
+      - "7777:80"
+    environment:
+      PORT: 3000
+      REACT_APP_COMMON_DATA_SERVICE_PORT: ${REACT_APP_COMMON_DATA_SERVICE_PORT}
+      REACT_APP_AUTHENTICATION_SERVICE_PORT: ${REACT_APP_AUTHENTICATION_SERVICE_PORT}
+      REACT_APP_SEARCH_SUGGESTION_SERVICE_PORT: ${REACT_APP_SEARCH_SUGGESTION_SERVICE_PORT}
+      REACT_APP_PAYMENT_SERVICE_PORT: ${PAYMENT_SERVICE_PORT}
+      REACT_APP_COMMON_DATA_SERVICE_URL: ${REACT_APP_COMMON_DATA_SERVICE_URL}
+      REACT_APP_AUTHENTICATION_SERVICE_URL: ${REACT_APP_AUTHENTICATION_SERVICE_URL}
+      REACT_APP_SEARCH_SUGGESTION_SERVICE_URL: ${REACT_APP_SEARCH_SUGGESTION_SERVICE_URL}
+      REACT_APP_PAYMENT_SERVICE_URL: http://localhost:${PAYMENT_SERVICE_PORT}
+      REACT_APP_ENVIRONMENT: ${REACT_APP_ENVIRONMENT}
+    depends_on:
+      - db
+      - redis
+
+
+  spring-auth-service:
+    container_name: ecf-5-spring-auth-service
+    build: ./server/authentication-service/.
+    ports:
+      - "8888:${AUTHENTICATION_SERVICE_PORT}"
+    environment:
+      PORT: ${AUTHENTICATION_SERVICE_PORT}
+      DB_PORT: ${DB_PORT}
+      DB_HOST: db
+      DB_SCHEMA: ${DB_SCHEMA}
+      DB_USER: ${DB_USER}
+      DB_PASS: ${DB_PASS}
+      ACTIVE_PROFILE: ${ACTIVE_PROFILE}
+    depends_on:
+      - db
+      - redis
+      - react
+
+
+  spring-payment-service:
+    container_name: ecf-5-spring-payment-service
+    build: ./server/payment-service/.
+    ports:
+      - "8889:${PAYMENT_SERVICE_PORT}"
+    environment:
+      PORT: ${PAYMENT_SERVICE_PORT}
+    depends_on:
+      - db
+      - redis
+      - react
+
+
+  spring-common-data-service:
+    container_name: ecf-5-spring-common-data-service
+    build: ./server/common-data-service/.
+    ports:
+      - "8887:${COMMON_DATA_SERVICE_PORT}"
+    environment:
+      PORT: ${COMMON_DATA_SERVICE_PORT}
+      DB_PORT: ${DB_PORT}
+      DB_HOST: db
+      DB_SCHEMA: ${DB_SCHEMA}
+      DB_USER: ${DB_USER}
+      DB_PASS: ${DB_PASS}
+      REDIS_HOST: redis
+      REDIS_PORT: ${REDIS_PORT}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      ACTIVE_PROFILE: ${ACTIVE_PROFILE}
+    depends_on:
+      - db
+      - redis
+      - react
+
+
+  spring-search-suggestion-service:
+    container_name: ecf-5-spring-search-suggestion-service
+    build: ./server/search-suggestion-service/.
+    ports:
+      - "8886:${SEARCH_SUGGESTION_SERVICE_PORT}"
+    environment:
+      PORT: ${SEARCH_SUGGESTION_SERVICE_PORT}
+      ACTIVE_PROFILE: ${ACTIVE_PROFILE}
+      COMMON_DATA_SERVICE_URL: http://ecf-5-spring-common-data-service:${COMMON_DATA_SERVICE_PORT}
+    depends_on:
+      - db
+      - redis
+      - react
+      - spring-common-data-service
+      - spring-auth-service
+      - spring-payment-service
+volumes:
+  ecf_5_volume:
